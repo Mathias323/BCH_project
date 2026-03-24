@@ -1,5 +1,7 @@
 import numpy as np
 
+#this code aims to attain a better understanding of BCH codes, Mainly a construction based on theory and 
+
 ##Bch decoder to a specified primitive polynomial and error correcting amount
 ## still needs a lot of refinement, especially with cleaning up readability
 
@@ -298,7 +300,7 @@ class BCH_actual:
 
 
 
-primitive_polynomial=np.array([1,1,0,0,1]) #primal polynomial 1+x+x^4
+#primitive_polynomial=np.array([1,1,0,0,1]) #primal polynomial 1+x+x^4
 primitive_polynomial=np.array([1,0,1,1,1,0,0,0,1], dtype=np.uint8)
 encoder=BCH_actual(primitive_polynomial,5)
 
