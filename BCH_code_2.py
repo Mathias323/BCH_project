@@ -1,9 +1,7 @@
 import numpy as np
 
-#this code aims to attain a better understanding of BCH codes, Mainly a construction based on theory and 
-
+#this code aims to attain a better understanding of BCH codes, It does not directly translate to the one used in the openroad standard.
 ##Bch decoder to a specified primitive polynomial and error correcting amount
-## still needs a lot of refinement, especially with cleaning up readability
 
 class BCH_actual:
     def __init__(self, polynomial, error_correcting_amount):
@@ -286,6 +284,8 @@ class BCH_actual:
         return np.random.randint(0, 2, length, dtype=np.uint8)
     
     def test_messages(self, amount, amount_errors):
+        #tests an amount of messages with a fixed amount of randomly indexed errors
+        #could easily be changed to be a random chance errors, amount and index.
         for j in range(amount):
             mess=self.random_message(self.k)
             encoded_mess=self.encode_systematic(mess)

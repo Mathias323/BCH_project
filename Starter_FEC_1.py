@@ -126,13 +126,27 @@ encoder=BCH_basic(primitive_polynomial,1)
 
 mess=encoder.random_message(11)
 encoded_mess=encoder.encode_systematic(mess)
+print(mess)
+print(encoded_mess)
+encoded_mess[2]^=1
+decoded=encoder.decode_systematic(encoded_mess)
+print(decoded)
+print(np.array_equal(mess,decoded))
 
+
+mess=encoder.random_message(11)
+encoded_mess=encoder.encode(mess)
 print(mess)
 print(encoded_mess)
 encoded_mess[2]^=1
 decoded=encoder.decode(encoded_mess)
 print(decoded)
 print(np.array_equal(mess,decoded))
+
+
+
+
+
 #print(decoded,mess,np.array_equal(decoded,mess))
 
 
