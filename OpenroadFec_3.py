@@ -9,10 +9,10 @@ class BCH_from_standard:
         #The huge difference between this version and the version in part 2 is that this has the concrete numbers from the standard instead of variables.
         self.t=2                                                                    #t is the amount of errors this code can correct
         self.r=8                                                                    #r is the degree of the primitive polynomial
-        self.n=2**self.r-1                                                          #n is the codeword vectors length in bits
+        self.n=2**self.r                                                            #n is the codeword vectors length in bits, it has 1 more than standard bch due to parity bit
         self.g=np.array([1,1,0,0,0,1,1,0,1,1,1,1,0,1,1,0,1],dtype=np.uint8)         #g is the generator polynomial
         self.p=np.array([1,0,1,1,1,0,0,0,1])                                        #p is the primitive polynomial that defines the field, i pulled this out of thing air.
-        self.k=self.n-(len(self.g)-1)                                               #k is the uncoded data vectors length in bits
+        self.k=self.n-(len(self.g)-1)-1                                             #k is the uncoded data vectors length in bits again -1 because of parity bit
         
         #field element constants
         self.field_element_len=len(self.p)-1                                           #the length of a np.array containing a field element
@@ -96,9 +96,7 @@ class BCH_from_standard:
 
     
     def decode(self, mess):
-        parity_bit=mess[255]
         working_mess=mess[:255]
-
         parity_syn=np.bitwise_xor.reduce(mess)
 
         s_1_temp=self.field_element_0
@@ -107,72 +105,61 @@ class BCH_from_standard:
             if working_mess[i]==1:
                 s_1_temp=np.bitwise_xor(s_1_temp, self.field_elements[(i)%self.field_elements_amount])
                 s_3_temp=np.bitwise_xor(s_3_temp, self.field_elements[(i*3)%self.field_elements_amount])
-        print(s_1_temp, s_3_temp, f"syndromes")
-        print()
+
+
+        #0 error logic
 
         if np.array_equal(s_1_temp,self.field_element_0) and np.array_equal(s_3_temp,self.field_element_0):
-            if parity_syn:
-                working_mess[255]^=1
-            return working_mess[16:255]   
+            return (working_mess[16:255], True)   
 
 
-        #1 error logic
-        s_1_index=np.where(np.all(self.field_elements == s_1_temp, axis=1))[0][0]
-        s_3_index=np.where(np.all(self.field_elements == s_3_temp, axis=1))[0][0]
+        #1 and 2 error logic
+        #syndrome and sigma logic
+        if np.array_equal(s_1_temp,self.field_element_0):
+            return working_mess[16:255], False
+            pass
+        else:
+            s_1_index=np.where(np.all(self.field_elements == s_1_temp, axis=1))[0][0]
+            sigma_1=s_1_temp
+
         s_1__3_index=(s_1_index*3)%255
 
-        print(s_1_index, "index test")
-        print(s_3_index, "index test2")
 
-        if s_1__3_index ==s_3_index:
-            if not parity_syn:
-                working_mess[255]^=1
-            working_mess[s_1_index]^=1
-            return working_mess[16:255]
+        if np.array_equal(s_3_temp,self.field_element_0):
+            sigma_2=(2*s_1_index)%255
+        else:
+            s_3_index=np.where(np.all(self.field_elements == s_3_temp, axis=1))[0][0]
+
+            ##this little block is the 1 error returner, its placed here due to some edge cases with the 0 element during 2 error calculation
+            if s_1__3_index ==s_3_index:
+                working_mess[s_1_index]^=1
+                return (working_mess[16:255], True)
+
+            numerator=np.bitwise_xor(self.field_elements[s_1__3_index],self.field_elements[s_3_index])
+            numerator_index=np.where(np.all(self.field_elements == numerator, axis=1))[0][0]
+
+            sigma_2=(numerator_index-s_1_index)%255
         
-        #2 error logic
-        sigma_1=s_1_temp
-
-        numerator=np.bitwise_xor(self.field_elements[s_1__3_index],self.field_elements[s_3_index])
-        numerator_index=np.where(np.all(self.field_elements == numerator, axis=1))[0][0]
-
-        sigma_2=(numerator_index-s_1_index)%255
-        A_index=sigma_2-(2*s_1_index)%255
+        #2 error return logic
+        A_index=(sigma_2-(2*s_1_index))%255
 
         a_table_result=self.a_table[A_index]
 
-
-
         if len(a_table_result)==2:
             if parity_syn:
-                print("error in message")
-                return working_mess[16:255]
-            print(a_table_result,s_1_index)
+                return (working_mess[16:255], False)
             loc1=(a_table_result[0]+s_1_index)%255
             loc2=(a_table_result[1]+s_1_index)%255
-            print(loc1,loc2)
             working_mess[loc1]^=1
             working_mess[loc2]^=1
-            return working_mess[16:255]
-
-
-
-
-
-
-
-         
-        
-
-         
-
-        
+            return (working_mess[16:255], True)
+        return (working_mess[16:255], False)
     
-
-
     def random_message(self, length):
         #generates a message that consists of randomly chosen 1s and 0s of specified length. 
         return np.random.randint(0, 2, length, dtype=np.uint8)
+    
+
     
 
 ###testing
@@ -183,24 +170,33 @@ encoder=BCH_from_standard()
 
 message=encoder.random_message(encoder.k)
 message_encoded=encoder.encode_systematic(message)
-test_1=np.array_equal(message, encoder.decode(message_encoded))
+test_1=np.array_equal(message, encoder.decode(message_encoded)[0])
 
 message2=encoder.random_message(encoder.k)
 message_encoded2=encoder.encode_systematic(message2)
 message_encoded2[144]^=1
-test_2=np.array_equal(message2, encoder.decode(message_encoded2))
+test_2=np.array_equal(message2, encoder.decode(message_encoded2)[0])
 
 
 message3=encoder.random_message(encoder.k)
 message_encoded3=encoder.encode_systematic(message3)
 message_encoded3[77]^=1
 message_encoded3[177]^=1
-test_3=np.array_equal(message3, encoder.decode(message_encoded3))
+test_3=np.array_equal(message3, encoder.decode(message_encoded3)[0])
+
+
+message4=encoder.random_message(encoder.k)
+message_encoded4=encoder.encode_systematic(message4)
+message_encoded4[77]^=1
+message_encoded4[177]^=1
+message_encoded4[100]^=1
+test_4=not encoder.decode(message_encoded4)[1]
 
 
 print(test_1,"0 error scenario works")
 print(test_2,"1 error scenario works")
 print(test_3,"2 error scenario works")
+print(test_4,"3 error scenario works")
 
 
 #print(encoder.test_messages(100, 2))
