@@ -7,15 +7,31 @@ import numpy as np
 class BCH_from_standard:
     def __init__(self):
         #The huge difference between this version and the version in part 2 is that this has the concrete numbers from the standard instead of variables.
-        #
-
         self.t=2                                                                    #t is the amount of errors this code can correct
         self.r=8                                                                    #r is the degree of the primitive polynomial
         self.n=2**self.r-1                                                          #n is the codeword vectors length in bits
         self.g=np.array([1,1,0,0,0,1,1,0,1,1,1,1,0,1,1,0,1],dtype=np.uint8)         #g is the generator polynomial
+        self.p=np.array([1,0,1,1,1,0,0,0,1])                                        #p is the primitive polynomial that defines the field, i pulled this out of thing air.
         self.k=self.n-(len(self.g)-1)                                               #k is the uncoded data vectors length in bits
         
+        #field element constants
+        self.field_element_len=len(self.p)-1                                           #the length of a np.array containing a field element
+        self.field_elements=self.get_field_elements()                                  #an array of all the field elements 
+        self.field_element_0=np.zeros(self.field_element_len,dtype=np.uint8)           #the field element that is all 0's, not included in the rotation.
+        self.field_elements_amount=2**(self.field_element_len)-1                       #the amount of field elements
 
+        #A_table
+        self.a_table=self.get_A_table()
+
+
+    def get_field_elements(self): #simply gets all the field elements defined by the primitive polynomial upon initialization
+        field_elements=np.zeros(((2**(self.field_element_len))-1,self.field_element_len),dtype=np.uint8) # will be a list of every single field element, or x^n, # doesnt contain the 0 element
+        field_elements[0]=np.concatenate((np.array([1],dtype=np.uint8),np.zeros(self.field_element_len-1,dtype=np.uint8))) # first entry is just x^0
+        append_0=np.array([0],dtype=np.uint8)  #i couldnt find an easy way to just shift right and bitmask in np
+        for i in range(1,len(field_elements)):
+            field_elements[i]=self.divide_polynomial(np.concatenate((append_0,field_elements[i-1]))[:self.field_element_len+1],self.p)[1]
+        #print(field_elements, "field elements")
+        return field_elements
     
     def divide_polynomial(self, polynomial_a,polynomial_divider, fixed_length_remainder=False):
         #finds the remainder by xoring the generator polynomium alinged with the current bit index
@@ -64,32 +80,127 @@ class BCH_from_standard:
         return final_message
     
 
+    def get_A_table(self):
+        temp_A_table=[]
+        for j in range(self.field_elements_amount):
+            temp=[]
+            for i in range(self.field_elements_amount):
+                y=self.field_elements[i]
+                y_sq=self.field_elements[(i*2)%255]
+                result=np.bitwise_xor(y,y_sq)
+                if np.array_equal(result,self.field_elements[j]):
+                    temp.append(i)
+            temp_A_table.append(temp)
+        return temp_A_table
+            
+
+    
+    def decode(self, mess):
+        parity_bit=mess[255]
+        working_mess=mess[:255]
+
+        parity_syn=np.bitwise_xor.reduce(mess)
+
+        s_1_temp=self.field_element_0
+        s_3_temp=self.field_element_0
+        for i in range(self.field_elements_amount):
+            if working_mess[i]==1:
+                s_1_temp=np.bitwise_xor(s_1_temp, self.field_elements[(i)%self.field_elements_amount])
+                s_3_temp=np.bitwise_xor(s_3_temp, self.field_elements[(i*3)%self.field_elements_amount])
+        print(s_1_temp, s_3_temp, f"syndromes")
+        print()
+
+        if np.array_equal(s_1_temp,self.field_element_0) and np.array_equal(s_3_temp,self.field_element_0):
+            if parity_syn:
+                working_mess[255]^=1
+            return working_mess[16:255]   
+
+
+        #1 error logic
+        s_1_index=np.where(np.all(self.field_elements == s_1_temp, axis=1))[0][0]
+        s_3_index=np.where(np.all(self.field_elements == s_3_temp, axis=1))[0][0]
+        s_1__3_index=(s_1_index*3)%255
+
+        print(s_1_index, "index test")
+        print(s_3_index, "index test2")
+
+        if s_1__3_index ==s_3_index:
+            if not parity_syn:
+                working_mess[255]^=1
+            working_mess[s_1_index]^=1
+            return working_mess[16:255]
+        
+        #2 error logic
+        sigma_1=s_1_temp
+
+        numerator=np.bitwise_xor(self.field_elements[s_1__3_index],self.field_elements[s_3_index])
+        numerator_index=np.where(np.all(self.field_elements == numerator, axis=1))[0][0]
+
+        sigma_2=(numerator_index-s_1_index)%255
+        A_index=sigma_2-(2*s_1_index)%255
+
+        a_table_result=self.a_table[A_index]
+
+
+
+        if len(a_table_result)==2:
+            if parity_syn:
+                print("error in message")
+                return working_mess[16:255]
+            print(a_table_result,s_1_index)
+            loc1=(a_table_result[0]+s_1_index)%255
+            loc2=(a_table_result[1]+s_1_index)%255
+            print(loc1,loc2)
+            working_mess[loc1]^=1
+            working_mess[loc2]^=1
+            return working_mess[16:255]
+
+
+
+
+
+
+
+         
+        
+
+         
+
+        
+    
+
 
     def random_message(self, length):
         #generates a message that consists of randomly chosen 1s and 0s of specified length. 
         return np.random.randint(0, 2, length, dtype=np.uint8)
     
 
-
-
-    #unuseable for now
-    # def test_messages(self, amount, amount_errors):
-    #     for j in range(amount):
-    #         mess=self.random_message(self.k)
-    #         encoded_mess=self.encode_systematic(mess)
-    #         for i in range(amount_errors):
-    #             encoded_mess[np.random.randint(0,self.n)]^=1
-    #         decoded=self.bch_decode(encoded_mess)
-    #         if not np.array_equal(mess,decoded):
-    #             return False
-    #         print("decoded", j)
-    #     return True
-    
-
+###testing
 
 
 #primitive_polynomial=np.array([1,1,0,0,1]) #primal polynomial 1+x+x^4
 encoder=BCH_from_standard()
-print(encoder.encode_systematic(encoder.random_message(encoder.k)))
-#print(encoder.test_messages(100, 2))
 
+message=encoder.random_message(encoder.k)
+message_encoded=encoder.encode_systematic(message)
+test_1=np.array_equal(message, encoder.decode(message_encoded))
+
+message2=encoder.random_message(encoder.k)
+message_encoded2=encoder.encode_systematic(message2)
+message_encoded2[144]^=1
+test_2=np.array_equal(message2, encoder.decode(message_encoded2))
+
+
+message3=encoder.random_message(encoder.k)
+message_encoded3=encoder.encode_systematic(message3)
+message_encoded3[77]^=1
+message_encoded3[177]^=1
+test_3=np.array_equal(message3, encoder.decode(message_encoded3))
+
+
+print(test_1,"0 error scenario works")
+print(test_2,"1 error scenario works")
+print(test_3,"2 error scenario works")
+
+
+#print(encoder.test_messages(100, 2))
