@@ -165,38 +165,44 @@ class BCH_from_standard:
 ###testing
 
 
-#primitive_polynomial=np.array([1,1,0,0,1]) #primal polynomial 1+x+x^4
-encoder=BCH_from_standard()
 
-message=encoder.random_message(encoder.k)
-message_encoded=encoder.encode_systematic(message)
-test_1=np.array_equal(message, encoder.decode(message_encoded)[0])
+def main():
+    encoder=BCH_from_standard()
 
-message2=encoder.random_message(encoder.k)
-message_encoded2=encoder.encode_systematic(message2)
-message_encoded2[144]^=1
-test_2=np.array_equal(message2, encoder.decode(message_encoded2)[0])
+    message=encoder.random_message(encoder.k)
+    message_encoded=encoder.encode_systematic(message)
+    test_1=np.array_equal(message, encoder.decode(message_encoded)[0])
 
-
-message3=encoder.random_message(encoder.k)
-message_encoded3=encoder.encode_systematic(message3)
-message_encoded3[77]^=1
-message_encoded3[177]^=1
-test_3=np.array_equal(message3, encoder.decode(message_encoded3)[0])
+    message2=encoder.random_message(encoder.k)
+    message_encoded2=encoder.encode_systematic(message2)
+    message_encoded2[144]^=1
+    test_2=np.array_equal(message2, encoder.decode(message_encoded2)[0])
 
 
-message4=encoder.random_message(encoder.k)
-message_encoded4=encoder.encode_systematic(message4)
-message_encoded4[77]^=1
-message_encoded4[177]^=1
-message_encoded4[100]^=1
-test_4=not encoder.decode(message_encoded4)[1]
+    message3=encoder.random_message(encoder.k)
+    message_encoded3=encoder.encode_systematic(message3)
+    message_encoded3[77]^=1
+    message_encoded3[177]^=1
+    test_3=np.array_equal(message3, encoder.decode(message_encoded3)[0])
 
 
-print(test_1,"0 error scenario works")
-print(test_2,"1 error scenario works")
-print(test_3,"2 error scenario works")
-print(test_4,"3 error scenario works")
+    message4=encoder.random_message(encoder.k)
+    message_encoded4=encoder.encode_systematic(message4)
+    message_encoded4[77]^=1
+    message_encoded4[177]^=1
+    message_encoded4[100]^=1
+    test_4=not encoder.decode(message_encoded4)[1]
 
 
-#print(encoder.test_messages(100, 2))
+    print(test_1,"0 error scenario works")
+    print(test_2,"1 error scenario works")
+    print(test_3,"2 error scenario works")
+    print(test_4,"3 error scenario works")
+
+
+    #print(encoder.test_messages(100, 2))
+
+
+    
+if __name__ == "__main__":
+    main()
