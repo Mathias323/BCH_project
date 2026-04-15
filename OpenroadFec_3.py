@@ -75,7 +75,7 @@ class BCH_from_standard:
         message_padded[0:len(remainder)]=remainder #sets the padded 0's to the remainder
 
         parity_bit = np.array([np.bitwise_xor.reduce(message_padded)], dtype=np.uint8) #np.bitwise_xor.reduce xor's through the vector
-        final_message = np.concatenate((message_padded, parity_bit))
+        final_message = np.concatenate((parity_bit, message_padded))
 
         return final_message
     
@@ -96,7 +96,7 @@ class BCH_from_standard:
 
     
     def decode(self, mess):
-        working_mess=mess[:255]
+        working_mess=mess[1:]
         parity_syn=np.bitwise_xor.reduce(mess)
 
         s_1_temp=self.field_element_0
@@ -110,13 +110,13 @@ class BCH_from_standard:
         #0 error logic
 
         if np.array_equal(s_1_temp,self.field_element_0) and np.array_equal(s_3_temp,self.field_element_0):
-            return (working_mess[16:255], True)   
+            return (working_mess[16:], True)   
 
 
         #1 and 2 error logic
         #syndrome and sigma logic
         if np.array_equal(s_1_temp,self.field_element_0):
-            return working_mess[16:255], False
+            return working_mess[16:], False
             pass
         else:
             s_1_index=np.where(np.all(self.field_elements == s_1_temp, axis=1))[0][0]
@@ -133,7 +133,7 @@ class BCH_from_standard:
             ##this little block is the 1 error returner, its placed here due to some edge cases with the 0 element during 2 error calculation
             if s_1__3_index ==s_3_index:
                 working_mess[s_1_index]^=1
-                return (working_mess[16:255], True)
+                return (working_mess[16:], True)
 
             numerator=np.bitwise_xor(self.field_elements[s_1__3_index],self.field_elements[s_3_index])
             numerator_index=np.where(np.all(self.field_elements == numerator, axis=1))[0][0]
@@ -152,8 +152,8 @@ class BCH_from_standard:
             loc2=(a_table_result[1]+s_1_index)%255
             working_mess[loc1]^=1
             working_mess[loc2]^=1
-            return (working_mess[16:255], True)
-        return (working_mess[16:255], False)
+            return (working_mess[16:], True)
+        return (working_mess[16:], False)
     
     def random_message(self, length):
         #generates a message that consists of randomly chosen 1s and 0s of specified length. 
@@ -169,35 +169,37 @@ class BCH_from_standard:
 def main():
     encoder=BCH_from_standard()
 
-    message=encoder.random_message(encoder.k)
-    message_encoded=encoder.encode_systematic(message)
-    test_1=np.array_equal(message, encoder.decode(message_encoded)[0])
+    print(encoder.encode_systematic(np.zeros((encoder.k),dtype=np.uint8)))
 
-    message2=encoder.random_message(encoder.k)
-    message_encoded2=encoder.encode_systematic(message2)
-    message_encoded2[144]^=1
-    test_2=np.array_equal(message2, encoder.decode(message_encoded2)[0])
+    # message=encoder.random_message(encoder.k)
+    # message_encoded=encoder.encode_systematic(message)
+    # test_1=np.array_equal(message, encoder.decode(message_encoded)[0])
 
-
-    message3=encoder.random_message(encoder.k)
-    message_encoded3=encoder.encode_systematic(message3)
-    message_encoded3[77]^=1
-    message_encoded3[177]^=1
-    test_3=np.array_equal(message3, encoder.decode(message_encoded3)[0])
+    # message2=encoder.random_message(encoder.k)
+    # message_encoded2=encoder.encode_systematic(message2)
+    # message_encoded2[144]^=1
+    # test_2=np.array_equal(message2, encoder.decode(message_encoded2)[0])
 
 
-    message4=encoder.random_message(encoder.k)
-    message_encoded4=encoder.encode_systematic(message4)
-    message_encoded4[77]^=1
-    message_encoded4[177]^=1
-    message_encoded4[100]^=1
-    test_4=not encoder.decode(message_encoded4)[1]
+    # message3=encoder.random_message(encoder.k)
+    # message_encoded3=encoder.encode_systematic(message3)
+    # message_encoded3[77]^=1
+    # message_encoded3[177]^=1
+    # test_3=np.array_equal(message3, encoder.decode(message_encoded3)[0])
 
 
-    print(test_1,"0 error scenario works")
-    print(test_2,"1 error scenario works")
-    print(test_3,"2 error scenario works")
-    print(test_4,"3 error scenario works")
+    # message4=encoder.random_message(encoder.k)
+    # message_encoded4=encoder.encode_systematic(message4)
+    # message_encoded4[77]^=1
+    # message_encoded4[177]^=1
+    # message_encoded4[100]^=1
+    # test_4=not encoder.decode(message_encoded4)[1]
+
+
+    # print(test_1,"0 error scenario works")
+    # print(test_2,"1 error scenario works")
+    # print(test_3,"2 error scenario works")
+    # print(test_4,"3 error scenario works")
 
 
     #print(encoder.test_messages(100, 2))

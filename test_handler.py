@@ -13,12 +13,8 @@ class test_handler:
 
 
     def full_pattern_testing(self):
-        #this function runs about 2.700.000 tests btw, so dont run it, it takes like an hour, but it does confirm that it correctly decodes all
+        #this function runs about 2.700.000 tests btw, so dont run it unless you really want to, it takes like an hour, but it does confirm that it correctly decodes all
         #possible situations and therefore is fully standard compliant
-        test_0=True
-        test_1=True
-        test_2=True
-        test_3=True
         
         for i in range(self.fec.n):
             test_message1=self.random_message(self.fec.k)
