@@ -95,7 +95,7 @@ class BCH_from_standard:
             
 
     
-    def decode(self, mess):
+    def decode(self, mess, return_full=False):
         working_mess=mess[1:]
         parity_syn=np.bitwise_xor.reduce(mess)
 
@@ -110,12 +110,16 @@ class BCH_from_standard:
         #0 error logic
 
         if np.array_equal(s_1_temp,self.field_element_0) and np.array_equal(s_3_temp,self.field_element_0):
+            if return_full:
+                return working_mess
             return (working_mess[16:], True)   
 
 
         #1 and 2 error logic
         #syndrome and sigma logic
         if np.array_equal(s_1_temp,self.field_element_0):
+            if return_full:
+                    return working_mess
             return working_mess[16:], False
             pass
         else:
@@ -133,6 +137,8 @@ class BCH_from_standard:
             ##this little block is the 1 error returner, its placed here due to some edge cases with the 0 element during 2 error calculation
             if s_1__3_index ==s_3_index:
                 working_mess[s_1_index]^=1
+                if return_full:
+                    return working_mess
                 return (working_mess[16:], True)
 
             numerator=np.bitwise_xor(self.field_elements[s_1__3_index],self.field_elements[s_3_index])
@@ -152,8 +158,15 @@ class BCH_from_standard:
             loc2=(a_table_result[1]+s_1_index)%255
             working_mess[loc1]^=1
             working_mess[loc2]^=1
+
+            if return_full:
+                    return working_mess
             return (working_mess[16:], True)
+        
+        if return_full:
+                    return working_mess
         return (working_mess[16:], False)
+    
     
     def random_message(self, length):
         #generates a message that consists of randomly chosen 1s and 0s of specified length. 

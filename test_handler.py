@@ -1,10 +1,11 @@
 from OpenroadFec_3 import BCH_from_standard
+from productversion6 import productioncode
 import numpy as np
 
 class test_handler:
     def __init__(self):
         self.fec=BCH_from_standard()
-
+        self.productcode=productioncode()
 
     def random_message(self, length):
         #generates a message that consists of randomly chosen 1s and 0s of specified length. 
@@ -64,8 +65,16 @@ class test_handler:
             print(f"3 error test passed = {not status_3_error}")
 
         return True
+    
+    def productioncode_block_test(self,errorpecentage):
+        message=self.random_message(239*239)
+        message_enc=self.productcode.take_input(self.random_message)
+        self.errors=int(np.random.random(message_enc.shape)>errorpecentage)
+
+
+
 
 
 tester=test_handler()
 
-print(tester.full_pattern_testing())
+print(tester.productioncode_block_test(0.10))
