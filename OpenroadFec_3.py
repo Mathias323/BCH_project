@@ -11,7 +11,7 @@ class BCH_from_standard:
         self.r=8                                                                    #r is the degree of the primitive polynomial
         self.n=2**self.r                                                            #n is the codeword vectors length in bits, it has 1 more than standard bch due to parity bit
         self.g=np.array([1,1,0,0,0,1,1,0,1,1,1,1,0,1,1,0,1],dtype=np.uint8)         #g is the generator polynomial
-        self.p=np.array([1,0,1,1,1,0,0,0,1])                                        #p is the primitive polynomial that defines the field, i pulled this out of thing air.
+        self.p=np.array([1,0,1,1,1,0,0,0,1])                                        #p is the primitive polynomial that defines the field, i pulled this out of thin air.
         self.k=self.n-(len(self.g)-1)-1                                             #k is the uncoded data vectors length in bits again -1 because of parity bit
         
         #field element constants
@@ -76,6 +76,26 @@ class BCH_from_standard:
 
         parity_bit = np.array([np.bitwise_xor.reduce(message_padded)], dtype=np.uint8) #np.bitwise_xor.reduce xor's through the vector
         final_message = np.concatenate((parity_bit, message_padded))
+
+        return final_message
+    
+    def encode_systematic_ending(self, message): 
+        #this encode the message by shifting the message by the amount of redundancy bits (generator length -1)
+        #and then adding the remainder of the message divided by the generator polynomial (the padding makes it so those digits are 0)
+        #thereby making the remainder will be 0, which gives the error correcting ability through linearity
+        if len(message) != self.k:
+            raise ValueError(f"Message must have length {self.k}")
+        if not isinstance(message, np.ndarray):
+            raise ValueError("Message must be a numpy array")
+        
+        padding=np.zeros(len(self.g)-1,dtype=np.uint8)
+        message_padded=np.concatenate((padding,message)) #shifts the message by appending 0's to equal to the amount of space the remainder will take
+        remainder=self.divide_polynomial(message_padded,self.g)[1] #calculates the remainder
+        message_padded[0:len(remainder)]=remainder #sets the padded 0's to the remainder
+        message_padded=np.roll(message_padded,-len(remainder))
+
+        parity_bit = np.array([np.bitwise_xor.reduce(message_padded)], dtype=np.uint8) #np.bitwise_xor.reduce xor's through the vector
+        final_message = np.concatenate((message_padded, parity_bit))
 
         return final_message
     
@@ -160,12 +180,86 @@ class BCH_from_standard:
             working_mess[loc2]^=1
 
             if return_full:
-                    return working_mess
+                return working_mess
             return (working_mess[16:], True)
         
         if return_full:
-                    return working_mess
+            return working_mess
         return (working_mess[16:], False)
+    
+
+    def decode_ending(self, mess, return_full=False):
+        working_mess=mess.copy()
+        parity_syn=np.bitwise_xor.reduce(mess)
+
+        s_1_temp=self.field_element_0
+        s_3_temp=self.field_element_0
+        for i in range(self.field_elements_amount):
+            if working_mess[i]==1:
+                s_1_temp=np.bitwise_xor(s_1_temp, self.field_elements[(i)%self.field_elements_amount])
+                s_3_temp=np.bitwise_xor(s_3_temp, self.field_elements[(i*3)%self.field_elements_amount])
+
+
+        #0 error logic
+
+        if np.array_equal(s_1_temp,self.field_element_0) and np.array_equal(s_3_temp,self.field_element_0):
+            if return_full:
+                return working_mess
+            return (working_mess[:-17], True)   
+
+
+        #1 and 2 error logic
+        #syndrome and sigma logic
+        if np.array_equal(s_1_temp,self.field_element_0):
+            if return_full:
+                return working_mess
+            return working_mess[:-17], False
+        else:
+            s_1_index=np.where(np.all(self.field_elements == s_1_temp, axis=1))[0][0]
+            sigma_1=s_1_temp
+
+        s_1__3_index=(s_1_index*3)%255
+
+
+        if np.array_equal(s_3_temp,self.field_element_0):
+            sigma_2=(2*s_1_index)%255
+        else:
+            s_3_index=np.where(np.all(self.field_elements == s_3_temp, axis=1))[0][0]
+
+            ##this little block is the 1 error returner, its placed here due to some edge cases with the 0 element during 2 error calculation
+            if s_1__3_index ==s_3_index:
+                working_mess[s_1_index]^=1
+                if return_full:
+                    return working_mess
+                return (working_mess[:-17], True)
+
+            numerator=np.bitwise_xor(self.field_elements[s_1__3_index],self.field_elements[s_3_index])
+            numerator_index=np.where(np.all(self.field_elements == numerator, axis=1))[0][0]
+
+            sigma_2=(numerator_index-s_1_index)%255
+        
+        #2 error return logic
+        A_index=(sigma_2-(2*s_1_index))%255
+
+        a_table_result=self.a_table[A_index]
+
+        if len(a_table_result)==2:
+            if parity_syn:
+                if return_full:
+                    return working_mess
+                return (working_mess[:-17], False)
+            loc1=(a_table_result[0]+s_1_index)%255
+            loc2=(a_table_result[1]+s_1_index)%255
+            working_mess[loc1]^=1
+            working_mess[loc2]^=1
+
+            if return_full:
+                return working_mess
+            return (working_mess[:-17], True)
+        
+        if return_full:
+            return working_mess
+        return (working_mess[:-17], False)
     
     
     def random_message(self, length):
@@ -182,7 +276,19 @@ class BCH_from_standard:
 def main():
     encoder=BCH_from_standard()
 
-    print(encoder.encode_systematic(np.zeros((encoder.k),dtype=np.uint8)))
+    message=encoder.random_message(encoder.k)
+
+    test_1=encoder.encode_systematic(message)
+    test_2=encoder.encode_systematic_ending(message)
+
+    print(np.array_equal(test_1[17:],test_2[:-17]))
+
+    print(np.array_equal(message,encoder.decode(test_1)[0]))
+    print(np.array_equal(message,encoder.decode_ending(test_2)[0]))
+
+
+
+
 
     # message=encoder.random_message(encoder.k)
     # message_encoded=encoder.encode_systematic(message)
