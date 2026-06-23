@@ -30,58 +30,38 @@ class EngineBlock_encoder:
         #state matrix logic
         self.state_matrix=BlockMemory()
         
+  
 
-    def take_input(self, input): #unconfirmed
-        for i in input:
-            self.big_block_input[self.r][self.c+16*self.C]=i
-            self.c+=1
-            if self.c==16 or (self.C==6 and self.c==15):
-                self.c=0
-                self.r+=1
-                if self.r==32:
-                    self.r=0
-                    self.C+=1
-                    if self.C==7:
-                        self.encode_block(self.big_block_input)
-                        self.C=0    
-                
-
-    def encode_block(self, block): #unconfirmed
+    def encode_block(self, block): #takes np.array(32,111) returns np.array(2,8,16,16)
+        #for the 2 rows of big blocks, simply just follows
+        #the "identifier quadruple" defined by k
+        #page 45 right below figure 29
         starting_row=len(self.state_matrix.memory)
-        new_rows=[]
+        new_rows=np.zeros((2,self.N // self.B, self.B, self.B), dtype=np.uint8)
 
-        for R in range(starting_row, starting_row+2):
+        for R in range(starting_row, starting_row+2): 
             for r in range(self.B):
-                memory_part=[]
+                memory_part=np.zeros(self.N,dtype=np.uint8)
                 for k in range(self.N):
-                    memory_part.append(self.state_matrix.get_bit((R^1)-2*self.G-2*(self.N//self.B)+2*(k//self.B),(k//self.B),(k%self.B)^r,r))
-                    print((R^1)-2*self.G-2*(self.N//self.B)+2*(k//self.B),(k//self.B),(k%self.B)^r,r)
-                memory_part=np.array(memory_part,dtype=np.uint8)
-                pre_encoded=np.concatenate((block[(R-starting_row)*16+r],memory_part))
-                codeword=self.fec.encode_systematic(pre_encoded)
+                    memory_part[k]=self.state_matrix.get_bit((R^1)-2*self.G-2*(self.N//self.B)+2*(k//self.B),(k//self.B),(k%self.B)^r,r)
 
-                new_single_row=[]
-                for k in range(self.N,self.N*2):
-                    new_single_row.append(codeword[16*((k-self.N)//self.B)+(k%self.B)^r])
-                new_rows.append(new_single_row)
-                print(new_single_row)
+                pre_encoded = np.concatenate((memory_part, block[(R-starting_row)*16 + r]))
+                codeword=self.fec.encode_systematic_ending(pre_encoded)
 
-        new_rows=np.array(new_rows,dtype=np.uint8)
-        new_rows = new_rows.reshape(2, 8, 16, 16)
-        self.state_matrix.shift_up()
-        self.state_matrix.memory[:-2]=self.state_matrix.memory[2:]
-        self.state_matrix.memory[:2]=new_rows
+                for k in range(self.N, self.N*2):
+                    new_rows[R - starting_row, (k-self.N)//self.B, r, (k % self.B) ^ r] = codeword[k]
+
+        self.state_matrix.shift_up(2)
+        self.state_matrix.memory[-2:]=new_rows
         
-
-
-        return self.big_block_output
-    
-    
+        return new_rows
+      
     
 class EngineBlock_decoder:
-    def __init__(self):
+    def __init__(self, iterations):
         self.fec=BCH_from_standard()
 
+        self.iterations=iterations
         self.B=16
         self.N=128                  #straight from standard, one half of a consituent codeword in bits
         self.G=2
@@ -90,11 +70,10 @@ class EngineBlock_decoder:
         self.k=239
         self.parityamount=17
 
-
         #block logic
         self.bit_count=0
-        self.big_block_input=np.zeros((32,111),dtype=np.uint8)
-        self.big_block_output=np.zeros((32,128),dtype=np.uint8)
+        self.big_block_input=np.zeros((32,128),dtype=np.uint8)
+        self.big_block_output=np.zeros((32,111),dtype=np.uint8)
 
         self.r=0
         self.R=0
@@ -102,52 +81,119 @@ class EngineBlock_decoder:
         self.C=0
 
         #state matrix logic
-        self.state_matrix=BlockMemory()
+        self.state_matrixes=[]
+        for i in range(self.iterations):
+            self.state_matrixes.append(BlockMemory())
+
+        self.blocks_seen = 0
+        self.blocks_per_stage_latency = self.state_matrixes[0].rows // 2
+        self.total_latency_blocks = self.iterations * self.blocks_per_stage_latency
+
+
         
 
-    def take_input(self, input): #unconfirmed
-        for i in input:
-            self.big_block_input[self.r][self.c+16*self.C]=i
-            self.c+=1
-            if self.c==16 or (self.C==6 and self.c==15):
-                self.c=0
-                self.r+=1
-                if self.r==32:
-                    self.r=0
-                    self.C+=1
-                    if self.C==7:
-                        self.ship_input_block(self.big_block_input)
-                        self.C=0    
-                
 
-    def ship_input_block(self, block): #unconfirmed
-        memory_part=[]
-        for i in range(len(block)):
-            if i<16:
-                odd=1
-            else:
-                odd=0
-            for j in range(8):
-                memory_part.append(self.state_matrix.read_block_col(odd+j*2,j,i%16))
-            memory_array=np.concatenate(memory_part)
-            info_part=block[i]
+    def decode_block(self, block): #takes np.array(2,8,16,16) returns np.array(32,111)
 
-            combined=np.concatenate((info_part,memory_array))
-            encoded=self.fec.encode_systematic(combined)
-            self.big_block_output[i]=encoded[:128]
-            memory_part=[]
-        self.state_matrix.shift_up()
-        
-        print(self.big_block_output)
-        return self.big_block_output
-    
+        starting_row=len(self.state_matrixes[0].memory)
 
+        for state_matrix in self.state_matrixes:
+            for R in range(starting_row, starting_row+2): 
+                for r in range(self.B):
+                    codeword=np.zeros(2* self.N, dtype=np.uint8)
+
+                    for k in range(self.N):
+                        codeword[k]=state_matrix.get_bit((R^1)-2*self.G-2*(self.N//self.B)+2*(k//self.B),(k//self.B),(k%self.B)^r,r)
+
+                    for k in range(self.N, self.N*2):
+                        codeword[k]=block[R - starting_row, (k - self.N) // self.B, r, (k % self.B) ^ r]
+
+                    decoded = self.fec.decode_ending(codeword, True)
+
+                    for k in range(self.N):
+                        state_matrix.write_bit((R^1)-2*self.G-2*(self.N//self.B)+2*(k//self.B),(k//self.B),(k%self.B)^r,r,decoded[k])
+
+                    for k in range(self.N, self.N*2):
+                        block[R - starting_row, (k - self.N) // self.B, r, (k % self.B) ^ r]=decoded[k]
+
+            out_block = state_matrix.memory[:2].copy()
+
+            state_matrix.shift_up(2)
+            state_matrix.memory[-2:] = block
+
+            block = out_block
+
+        decoded_rows = np.zeros((32, 111), dtype=np.uint8)
+
+        for R in range(2):
+            for r in range(self.B):
+                row = R * self.B + r
+
+                for i in range(self.k - self.N): 
+                    decoded_rows[row, i] = block[R, i // self.B, r, (i % self.B) ^ r]
+
+
+        self.blocks_seen += 1
+        valid = self.blocks_seen > self.total_latency_blocks
+
+        return decoded_rows, valid
+           
 
 def main():
-    engine=EngineBlock_encoder()
+    encoder = EngineBlock_encoder()
+    decoder = EngineBlock_decoder(3)
+
     np.set_printoptions(threshold=np.inf)
-    for i in range(3552):
-        engine.take_input(np.array([i%2],dtype=np.uint8))
+
+    num_blocks = 150
+    compare_blocks = 100
+    bit_error_probability = 0.01
+
+    inputs = [
+        np.random.randint(0, 2, (32, 111), dtype=np.uint8)
+        for _ in range(num_blocks)
+    ]
+
+    outputs = []
+
+    injected_errors = 0
+    injected_bits = 0
+
+    for input_block in inputs:
+        encoded = encoder.encode_block(input_block)
+
+        noisy_encoded = encoded.copy()
+
+        # 1% independent bit-flip chance on the encoded block
+        error_mask = np.random.random(noisy_encoded.shape) < bit_error_probability
+        noisy_encoded[error_mask] ^= 1
+
+        injected_errors += np.count_nonzero(error_mask)
+        injected_bits += noisy_encoded.size
+
+        decoded, valid = decoder.decode_block(noisy_encoded)
+
+        if valid:
+            outputs.append(decoded)
+
+    usable_blocks = min(compare_blocks, len(outputs), len(inputs))
+
+    total_output_errors = 0
+    total_output_bits = 0
+
+    for i in range(usable_blocks):
+        total_output_errors += np.count_nonzero(outputs[i] != inputs[i])
+        total_output_bits += inputs[i].size
+
+    channel_ber = injected_errors / injected_bits
+    output_ber = total_output_errors / total_output_bits
+
+    print("Target channel BER %:", bit_error_probability * 100)
+    print("Actual injected channel BER %:", channel_ber * 100)
+    print("Output BER %:", output_ber * 100)
+    print("Compared blocks:", usable_blocks)
+    print("Output bit errors:", total_output_errors)
+    print("Output bits checked:", total_output_bits)
 
 if __name__ == "__main__":
     main()

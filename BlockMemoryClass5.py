@@ -8,7 +8,7 @@ class BlockMemory:
         self.rows=rows
         self.cols=cols
 
-        self.memory=np.ones((rows,cols,B,B),dtype=np.uint8)
+        self.memory=np.zeros((rows,cols,B,B),dtype=np.uint8)
 
 
 
@@ -32,11 +32,19 @@ class BlockMemory:
         return self.memory[big_row,:,row,:].reshape(-1)
     
     def shift_up(self, n=2):
-        self.memory[:-n]=self.memory[n:]
+        self.memory[:-n]=self.memory[n:].copy()
         self.memory[-n:]=0
     
+    def shift_down(self, n=2):
+        self.memory[n:]=self.memory[:-n].copy()
+        self.memory[:n]=0
+
     def get_bit(self, big_row, big_col, row, col):
         return self.memory[big_row,big_col,row,col]
+    
+    def write_bit(self, big_row, big_col, row, col, n):
+        self.memory[big_row,big_col,row,col] = n
+
 
     
 def main():

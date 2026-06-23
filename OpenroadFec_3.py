@@ -36,7 +36,7 @@ class BCH_from_standard:
     def divide_polynomial(self, polynomial_a,polynomial_divider, fixed_length_remainder=False):
         #finds the remainder by xoring the generator polynomium alinged with the current bit index
         #returns the quotient as index 0 and returns remainder at index 1
-        #the quotient is array is degree, deg_poly_a - deg_poly_divider, or 0, whichever is lowest
+        #the quotient array is degree, deg_poly_a - deg_poly_divider, or 0, whichever is lowest
         #the remainder array is just equal to degree poly_a if it is lower than divider
         #or the remainder array is degree poly_divider -1 if deg_poly_a >= deg_poly_divider, or if fixed length is set to true then it is 0 padded to that degree aswell.
         #starting at msb, returns array length div degree -1 since the remainder will always be smaller than the divisor
@@ -130,6 +130,8 @@ class BCH_from_standard:
         #0 error logic
 
         if np.array_equal(s_1_temp,self.field_element_0) and np.array_equal(s_3_temp,self.field_element_0):
+            if parity_syn:
+                working_mess[-1]^=1
             if return_full:
                 return working_mess
             return (working_mess[16:], True)   
@@ -203,12 +205,15 @@ class BCH_from_standard:
         #0 error logic
 
         if np.array_equal(s_1_temp,self.field_element_0) and np.array_equal(s_3_temp,self.field_element_0):
+            if parity_syn:
+                working_mess[255] ^= 1
             if return_full:
                 return working_mess
             return (working_mess[:-17], True)   
 
 
         #1 and 2 error logic
+
         #syndrome and sigma logic
         if np.array_equal(s_1_temp,self.field_element_0):
             if return_full:
@@ -229,6 +234,9 @@ class BCH_from_standard:
             ##this little block is the 1 error returner, its placed here due to some edge cases with the 0 element during 2 error calculation
             if s_1__3_index ==s_3_index:
                 working_mess[s_1_index]^=1
+
+                if not parity_syn:
+                    working_mess[255] ^= 1
                 if return_full:
                     return working_mess
                 return (working_mess[:-17], True)
